@@ -1,58 +1,57 @@
-/*
-Copyright © 2021 Dan Lorenc <lorenc.d@gmail.com>
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+//
+// Copyright 2021 The Sigstore Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package app
 
 import (
 	"context"
-	"crypto"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
-	"github.com/google/trillian"
-	tclient "github.com/google/trillian/client"
-	tcrypto "github.com/google/trillian/crypto"
-	"github.com/google/trillian/merkle/rfc6962/hasher"
+	_ "gocloud.dev/blob/fileblob" // fileblob
+	_ "gocloud.dev/blob/gcsblob"
+	_ "gocloud.dev/pubsub/kafkapubsub"
 
-	"github.com/sigstore/rekor/cmd/cli/app"
-	"github.com/sigstore/rekor/pkg/generated/client"
-	"github.com/sigstore/rekor/pkg/log"
-
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"gocloud.dev/blob"
-	_ "gocloud.dev/blob/gcsblob"
+	"gocloud.dev/pubsub"
+
+	"github.com/sigstore/rekor/cmd/rekor-cli/app"
+	"github.com/sigstore/rekor/pkg/log"
 )
 
-func init() {
-	rootCmd.AddCommand(watchKafkaCmd)
-}
+const rekorSthPubSubTopicEnv = "REKOR_STH_TOPIC"
 
-// watchCmd represents the serve command
+// watchKafkaCmd represents the serve command
 var watchKafkaCmd = &cobra.Command{
 	Use:   "watch_kafka",
-	Short: "start a process to watch and record STH's from Rekor",
-	Long:  `start a process to watch and record STH's from Rekor`,
+	Short: "Start a process to watch and record STH's from Rekor",
+	Long:  `Start a process to watch and record STH's from Rekor`,
+	PreRun: func(cmd *cobra.Command, args []string) {
+		// these are bound here so that they are not overwritten by other commands
+		if err := viper.BindPFlags(cmd.Flags()); err != nil {
+			log.Logger.Fatal("Error initializing cmd line args: ", err)
+		}
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		// Setup the logger to dev/prod
@@ -64,13 +63,14 @@ var watchKafkaCmd = &cobra.Command{
 
 		host := viper.GetString("rekor_server.address")
 		port := viper.GetUint("rekor_server.port")
+		interval := viper.GetDuration("interval")
 		url := fmt.Sprintf("http://%s:%d", host, port)
 		c, err := app.GetRekorClient(url)
 		if err != nil {
 			return err
 		}
 
-		keyResp, err := c.Tlog.GetPublicKey(nil)
+		keyResp, err := c.Pubkey.GetPublicKey(nil)
 		if err != nil {
 			return err
 		}
@@ -85,20 +85,24 @@ var watchKafkaCmd = &cobra.Command{
 			return err
 		}
 
-		verifier := tclient.NewLogVerifier(hasher.DefaultHasher, pub, crypto.SHA256)
 		ctx := context.Background()
-		bucketURL := os.Getenv("REKOR_STH_BUCKET")
-		bucket, err := blob.OpenBucket(ctx, bucketURL)
+		topicURL := os.Getenv(rekorSthPubSubTopicEnv)
+		if topicURL == "" {
+			log.CliLogger.Fatalf("%s env var must be set", rekorSthPubSubTopicEnv)
+		}
+
+		topic, err := pubsub.OpenTopic(ctx, topicURL)
 		if err != nil {
 			return err
 		}
-		defer bucket.Close()
-		tick := time.NewTicker(1 * time.Minute)
+		defer topic.Shutdown(ctx)
+		tick := time.NewTicker(interval)
 		var last *SignedAndUnsignedLogRoot
+
 		for {
 			<-tick.C
 			log.Logger.Info("performing check")
-			lr, err := verifySignedLogRoot(c, verifier)
+			lr, err := doCheck(c, pub)
 			if err != nil {
 				log.Logger.Warnf("error verifiying tree: %s", err)
 				continue
@@ -111,7 +115,7 @@ var watchKafkaCmd = &cobra.Command{
 				// in case that failed.
 			}
 
-			if err := uploadToKafka(ctx, bucket, lr); err != nil {
+			if err := uploadToKafka(ctx, topic, lr); err != nil {
 				log.Logger.Warnf("error uploading result: %s", err)
 				continue
 			}
@@ -120,58 +124,26 @@ var watchKafkaCmd = &cobra.Command{
 	},
 }
 
-func verifySignedLogRoot(c *client.Rekor, v *tclient.LogVerifier) (*SignedAndUnsignedLogRoot, error) {
-	li, err := c.Tlog.GetLogInfo(nil)
-	if err != nil {
-		return nil, err
-	}
-	keyHint, err := base64.StdEncoding.DecodeString(li.Payload.SignedTreeHead.KeyHint.String())
-	if err != nil {
-		return nil, err
-	}
-	logRoot, err := base64.StdEncoding.DecodeString(li.Payload.SignedTreeHead.LogRoot.String())
-	if err != nil {
-		return nil, err
-	}
-	signature, err := base64.StdEncoding.DecodeString(li.Payload.SignedTreeHead.Signature.String())
-	if err != nil {
-		return nil, err
-	}
-	sth := trillian.SignedLogRoot{
-		KeyHint:          keyHint,
-		LogRoot:          logRoot,
-		LogRootSignature: signature,
-	}
-	lr, err := tcrypto.VerifySignedLogRoot(v.PubKey, v.SigHash, &sth)
-	if err != nil {
-		return nil, err
-	}
-	return &SignedAndUnsignedLogRoot{
-		SignedLogRoot:   &sth,
-		VerifiedLogRoot: lr,
-	}, nil
+func init() {
+	watchKafkaCmd.Flags().Duration("interval", 1*time.Minute, "Polling interval")
+	rootCmd.AddCommand(watchKafkaCmd)
 }
 
-func uploadToKafka(ctx context.Context, bucket *blob.Bucket, lr *SignedAndUnsignedLogRoot) error {
+func uploadToKafka(ctx context.Context, topic *pubsub.Topic, lr *SignedAndUnsignedLogRoot) error {
 	b, err := json.Marshal(lr)
 	if err != nil {
 		return err
 	}
 
-	objName := fmt.Sprintf("sth-%d.json", lr.VerifiedLogRoot.TreeSize)
-	w, err := bucket.NewWriter(ctx, objName, nil)
+	err = topic.Send(ctx, &pubsub.Message{
+		Body: b,
+		Metadata: map[string]string{
+			"format":       "json",
+			"sth-treesize": strconv.FormatUint(lr.VerifiedLogRoot.TreeSize, 10),
+		},
+	})
 	if err != nil {
-		return err
-	}
-	defer w.Close()
-	if _, err := w.Write(b); err != nil {
 		return err
 	}
 	return nil
 }
-
-// For JSON marshalling
-//type SignedAndUnsignedLogRoot struct {
-//	SignedLogRoot   *trillian.SignedLogRoot
-//	VerifiedLogRoot *types.LogRootV1
-//}
