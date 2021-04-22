@@ -37,6 +37,7 @@ require (
 	go.uber.org/goleak v1.1.10
 	go.uber.org/zap v1.16.0
 	gocloud.dev v0.22.0
+	gocloud.dev/pubsub/kafkapubsub v0.22.0
 	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad
 	golang.org/x/net v0.0.0-20210324051636-2c4c8ecb7826
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
