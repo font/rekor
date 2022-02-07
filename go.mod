@@ -10,13 +10,13 @@ require (
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-chi/chi v4.1.2+incompatible
-	github.com/go-openapi/errors v0.20.0
-	github.com/go-openapi/loads v0.20.2
-	github.com/go-openapi/runtime v0.19.26
-	github.com/go-openapi/spec v0.20.3
-	github.com/go-openapi/strfmt v0.20.0
-	github.com/go-openapi/swag v0.19.14
-	github.com/go-openapi/validate v0.20.2
+	github.com/go-openapi/errors v0.20.1
+	github.com/go-openapi/loads v0.21.0
+	github.com/go-openapi/runtime v0.23.0
+	github.com/go-openapi/spec v0.20.4
+	github.com/go-openapi/strfmt v0.21.0
+	github.com/go-openapi/swag v0.19.15
+	github.com/go-openapi/validate v0.20.3
 	github.com/golang/protobuf v1.4.3
 	github.com/google/certificate-transparency-go v1.1.0 // indirect
 	github.com/google/rpmpack v0.0.0-20210107155803-d6befbf05148
@@ -42,9 +42,8 @@ require (
 	go.uber.org/zap v1.16.0
 	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad
 	golang.org/x/mod v0.4.1 // indirect
-	golang.org/x/net v0.0.0-20210226172049-e18ecbb05110
+	golang.org/x/net v0.0.0-20210421230115-4e50805a0758
 	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
-	golang.org/x/sys v0.0.0-20210301091718-77cc2087c03b // indirect
 	golang.org/x/tools v0.1.0 // indirect
 	google.golang.org/genproto v0.0.0-20200825200019-8632dd797987
 	google.golang.org/grpc v1.36.0
