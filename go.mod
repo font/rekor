@@ -15,7 +15,7 @@ require (
 	github.com/go-openapi/runtime v0.19.26
 	github.com/go-openapi/spec v0.20.3
 	github.com/go-openapi/strfmt v0.20.0
-	github.com/go-openapi/swag v0.19.14
+	github.com/go-openapi/swag v0.22.1
 	github.com/go-openapi/validate v0.20.2
 	github.com/golang/protobuf v1.4.3
 	github.com/google/certificate-transparency-go v1.1.0 // indirect
@@ -23,7 +23,6 @@ require (
 	github.com/google/trillian v1.3.13
 	github.com/jedisct1/go-minisign v0.0.0-20210106175330-e54e81d562c7
 	github.com/magiconair/properties v1.8.4 // indirect
-	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mediocregopher/radix/v4 v4.0.0-beta.1
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/mitchellh/mapstructure v1.4.1
