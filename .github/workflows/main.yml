@@ -21,7 +21,7 @@ jobs:
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3.1.0
       # Setup Go
       - uses: actions/setup-go@v2
         with:
@@ -60,7 +60,7 @@ jobs:
       - name: download minisign
         run: sudo add-apt-repository ppa:dysfunctionalprogramming/minisign && sudo apt-get update && sudo apt-get install minisign
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3.1.0
       - name: Docker Build
         run: docker-compose build
       - uses: actions/setup-go@v2
